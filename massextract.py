@@ -14,7 +14,7 @@ COPY_FILES      = ['.avi', '.flac', '.mkv', '.mp3', '.mp4', '.ogg']
 INDEX_NAME      = '.massextract'
 LOCKFILE_NAME   = '/tmp/massextract'
 HASH_BLOCK_SIZE = 1 << 16 # 64k
-VERSION         = '0.1'
+VERSION         = '0.2'
 
 # Patoolib has a bug where invoking 7z waits for the user to confirm
 # file overwrite. Apply this and any other hotfixes here
@@ -110,9 +110,15 @@ def hash_file(file_path):
 # This is the main interface
 @lockfile.locked(LOCKFILE_NAME)
 def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
+    dir_cnt = 0
+    file_cnt = 0
+    pending_cnt = 0
+    processed_cnt = 0
+
     for dir_name, dirs, files in os.walk(in_root_dir):
         rel_dir = os.path.relpath(dir_name, in_root_dir)
         out_dir = os.path.normpath(os.path.join(out_root_dir, rel_dir))
+        dir_cnt += 1
 
 	# open index file for rel_dir, used to check file completeness
 	idx = load_index(dir_name)
@@ -122,6 +128,7 @@ def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
         for f, t in filter(None, map(classify_file, files)):
             file_path = os.path.join(dir_name, f)
             f = unicode(f, sys.getfilesystemencoding())
+            file_cnt += 1
 
             try:
                 state       = idx[f] # !! FIXME
@@ -151,6 +158,7 @@ def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
 
                 if new_cnt >= count_threshold and not processed:
                     # File hasn't been processed and is ready: process!
+                    processed_cnt += 1
 
                     # Prepare output directory
                     try:
@@ -166,12 +174,19 @@ def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
                         processed = True
                     except Exception as e:
                         print 'WARN: could not process %s: %s' % (file_path, e.message)
+                else:
+                    pending_cnt += 1
 
                 # Update the index based on what we just did
                 idx[f] = {'shasum': new_sum, 'match_cnt': new_cnt, 'processed': processed}
         
         # Done with files in directory: rewrite the index
         save_index(dir_name, idx)
+
+    print 'Directories scanned: %d' % dir_cnt
+    print 'Files scanned:       %d' % file_cnt
+    print 'Files processed:     %d' % processed_cnt
+    print 'Files pending:       %s' % pending_cnt
 
 ########
 
