@@ -14,6 +14,7 @@ COPY_FILES      = ['.avi', '.flac', '.mkv', '.mp3', '.mp4', '.ogg']
 INDEX_NAME      = '.massextract'
 LOCKFILE_NAME   = '/tmp/massextract'
 HASH_BLOCK_SIZE = 1 << 16 # 64k
+VERSION         = '0.1'
 
 # Patoolib has a bug where invoking 7z waits for the user to confirm
 # file overwrite. Apply this and any other hotfixes here
@@ -40,12 +41,13 @@ def hotfix_patoolib():
     unrar.extract_rar = extract_rar    
 
 # Extract file to destination
-def extract_archive(fname, out_dir):
+def extract_archive(fname, out_dir, verbose):
     print 'Extracting', fname, 'to', out_dir
-    patoolib.extract_archive(fname, outdir=out_dir, verbosity=1)
+    verbosity = 1 if verbose else -1
+    patoolib.extract_archive(fname, outdir=out_dir, verbosity=verbosity)
 
 # Copy file to destination
-def copy_file(fname, out_dir):
+def copy_file(fname, out_dir, verbose):
     print 'Copying', fname, 'to', out_dir
     shutil.copy(fname, out_dir)
 
@@ -107,39 +109,37 @@ def hash_file(file_path):
 
 # This is the main interface
 @lockfile.locked(LOCKFILE_NAME)
-def massextract(in_root_dir, out_root_dir, count_threshold):
+def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
     for dir_name, dirs, files in os.walk(in_root_dir):
         rel_dir = os.path.relpath(dir_name, in_root_dir)
         out_dir = os.path.normpath(os.path.join(out_root_dir, rel_dir))
 
 	# open index file for rel_dir, used to check file completeness
 	idx = load_index(dir_name)
-        print 'LOL', repr(idx)
 
         # Don't bother checking the finger print of unknown extensions
         #for f, t in filter(lambda x: bool, map(classify_file, files)):
         for f, t in filter(None, map(classify_file, files)):
             file_path = os.path.join(dir_name, f)
             f = unicode(f, sys.getfilesystemencoding())
-            print 'LOL', repr(file_path)
 
             try:
                 state       = idx[f] # !! FIXME
                 # Old sum: to check if file changed, or if we are ready to copy
                 old_sum     = state['shasum']
                 # The current check count (one more than last time)
-                cnt         = state['cnt'] + 1
+                old_cnt     = state['match_cnt'] + 1
                 # Has the file been processed?
                 processed   = state['processed']
             except KeyError:
                 # File not indexed: no sum
                 old_sum = ''
                 # First iteration
-                old_cnt = 1
+                old_cnt = 0
                 # Never been processed
                 processed = False
 
-            if not processed:
+            if force or not processed:
                 # File is not known to be stable: calculate new hash
                 new_sum = hash_file(file_path)
                 if new_sum == old_sum:
@@ -147,9 +147,9 @@ def massextract(in_root_dir, out_root_dir, count_threshold):
                     new_cnt = old_cnt + 1
                 else:
                     # Different hash, reset the count
-                    new_cnt = 1
+                    new_cnt = 0
 
-                if new_cnt >= count_threshold:
+                if new_cnt >= count_threshold and not processed:
                     # File hasn't been processed and is ready: process!
 
                     # Prepare output directory
@@ -162,13 +162,13 @@ def massextract(in_root_dir, out_root_dir, count_threshold):
 
                     # Now perform the appropriate copy/extract operation, t, on the file
                     try:
-                        t(file_path, out_dir)
+                        t(file_path, out_dir, verbose)
                         processed = True
                     except Exception as e:
                         print 'WARN: could not process %s: %s' % (file_path, e.message)
 
                 # Update the index based on what we just did
-                idx[f] = {'shasum': new_sum, 'cnt': new_cnt, 'processed': processed}
+                idx[f] = {'shasum': new_sum, 'match_cnt': new_cnt, 'processed': processed}
         
         # Done with files in directory: rewrite the index
         save_index(dir_name, idx)
@@ -176,8 +176,20 @@ def massextract(in_root_dir, out_root_dir, count_threshold):
 ########
 
 if __name__ == '__main__':
-    in_root_dir     = '/Users/pgiblock/src/massextract/test-in'
-    out_root_dir    = '/Users/pgiblock/src/massextract/test-out'
-    count_threshold = 0
+    print 'Massextract v%s (c) 2015 Paul Giblock\n' % VERSION
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('indir', help='input directory to scan')
+    parser.add_argument('outdir', help='output directory for extraction')
+    parser.add_argument('-t', '--threshold', 
+            help='number of stable matches needed before extracting',
+            type=int,
+            default=3)
+    parser.add_argument('-f', '--force', action='store_true',
+            help='force rescan even for already processed files')
+    parser.add_argument('-v', '--verbose', action='store_true',
+            help='increase output verbosity')
+    args = parser.parse_args()
+
     hotfix_patoolib()
-    massextract(in_root_dir, out_root_dir, count_threshold)
+    massextract(args.indir, args.outdir, args.threshold, args.force, args.verbose)
