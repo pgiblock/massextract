@@ -183,10 +183,13 @@ def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
         # Done with files in directory: rewrite the index
         save_index(dir_name, idx)
 
-    print 'Directories scanned: %d' % dir_cnt
-    print 'Files scanned:       %d' % file_cnt
-    print 'Files processed:     %d' % processed_cnt
-    print 'Files pending:       %s' % pending_cnt
+    print ''
+    print '='*30
+    print 'Directories scanned:  %8d' % dir_cnt
+    print 'Files scanned:        %8d' % file_cnt
+    print 'Files processed:      %8d' % processed_cnt
+    print 'Files pending:        %8d' % pending_cnt
+    print '='*30
 
 ########
 
