@@ -81,13 +81,15 @@ def load_index(directory):
             if stat.S_ISREG(st.st_mode) and st.st_size == 0:
                 print 'WARN: Index %s was empty, ignoring.' % fname
                 return {}
-            # Bubble any other error back to the top
+            else:
+                raise
 
     except IOError as e:
         if os.errno.ENOENT:
             # Directory hasn't been indexed. Start fresh
             return {}
-        # Bubble any other error back to the top
+        else:
+            raise
 
 def save_index(directory, idx):
     # Don't pollute with empty files
@@ -131,7 +133,7 @@ def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
             file_cnt += 1
 
             try:
-                state       = idx[f] # !! FIXME
+                state       = idx[f]
                 # Old sum: to check if file changed, or if we are ready to copy
                 old_sum     = state['shasum']
                 # The current check count (one more than last time)
@@ -167,6 +169,8 @@ def massextract(in_root_dir, out_root_dir, count_threshold, force, verbose):
                         # Directory already exists is OK. Bubble anything else back up
                         if e.errno == os.errno.EEXIST:
                             pass
+                        else:
+                            raise
 
                     # Now perform the appropriate copy/extract operation, t, on the file
                     try:
